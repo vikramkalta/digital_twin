@@ -7,11 +7,21 @@ import Papa from "papaparse";
 import { Model } from "./assets/Model";
 
 function App() {
+  const [visibleFloor, setVisibleFloor] = useState("all"); // Default to ground floor
   const [data, setData] = useState([]);
   const [months, setMonths] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState("Select All");
   const [selectedKPI, setSelectedKPI] = useState("CO2"); // Default KPI
   const [kpiValue, setKpiValue] = useState(0);
+  const [mode] = useState("Historical");
+
+  // Thresholds for alerts
+  const thresholds = {
+    CO2: 1000, // CO2 threshold
+    Humidity: [30, 60], // Humidity range
+    Temperature: [17, 23], // Temperature range
+    Occupancy: 50, // Occupancy threshold
+  };
 
   // Load data on mount
   useEffect(() => {
@@ -64,24 +74,70 @@ function App() {
 
   useEffect(() => {
     if (data.length > 0) updateKpiValue();
-  }, [data, selectedMonth, selectedKPI]);
+  }, [data, selectedMonth, selectedKPI, mode]);
+
+  useEffect(() => {
+    if (mode === "Historical") {
+      return;
+    }
+    // Check for threshold breaches and show alerts
+    if (selectedKPI === "CO2" && kpiValue > thresholds.CO2) {
+      alert(`CO2 value (${kpiValue.toFixed(2)}). Needs attention.`);
+    } else if (
+      selectedKPI === "Humidity" &&
+      (kpiValue < thresholds.Humidity[0] || kpiValue > thresholds.Humidity[1])
+    ) {
+      alert(`Humidity value (${kpiValue.toFixed(2)}%). Needs attention.`);
+    } else if (
+      selectedKPI === "Temperature" &&
+      (kpiValue < thresholds.Temperature[0] ||
+        kpiValue > thresholds.Temperature[1])
+    ) {
+      alert(`Temperature value (${kpiValue.toFixed(2)}°C). Needs attention.`);
+    } else if (selectedKPI === "Occupancy" && kpiValue > thresholds.Occupancy) {
+      alert(`Occupancy value (${kpiValue.toFixed(2)}). Needs attention.`);
+    }
+  }, [kpiValue]);
 
   const updateKpiValue = () => {
-    const filteredData =
-      selectedMonth === "Select All"
-        ? data
-        : data.filter((row) => row.month === selectedMonth);
-    const avgValue =
-    filteredData.reduce((sum, row) => {
-      const value = row[selectedKPI.toLowerCase()];
-      return sum + (value !== "" && !isNaN(value) ? parseFloat(value) : 0);
-    }, 0) / filteredData.length;
-    
-    setKpiValue(avgValue || 0);
+    let filteredData = [];
+    if (mode === "Historical") {
+      filteredData =
+        selectedMonth === "Select All"
+          ? data
+          : data.filter((row) => row.month === selectedMonth);
+      const avgHistorical =
+        filteredData.reduce((sum, row) => {
+          const value = row[selectedKPI.toLowerCase()];
+          return sum + (value !== "" && !isNaN(value) ? parseFloat(value) : 0);
+        }, 0) / filteredData.length;
+
+      setKpiValue(avgHistorical || 0);
+    }
   };
 
   return (
     <div className="App">
+      <div className="floor-selector">
+        <button
+          className={`tile ${visibleFloor === "all" ? "active" : ""}`}
+          onClick={() => setVisibleFloor("all")}
+        >
+          All Floors
+        </button>
+        <button
+          className={`tile ${visibleFloor === "1st" ? "active" : ""}`}
+          onClick={() => setVisibleFloor("1st")}
+        >
+          1st Floor
+        </button>
+        <button
+          className={`tile ${visibleFloor === "2nd" ? "active" : ""}`}
+          onClick={() => setVisibleFloor("2nd")}
+        >
+          2nd Floor
+        </button>
+      </div>
       <div className="kpi-selector">
         {["CO2", "Humidity", "Temperature", "Occupancy"].map((kpi) => (
           <button
@@ -93,21 +149,29 @@ function App() {
           </button>
         ))}
       </div>
-      <select
-        value={selectedMonth}
-        onChange={(e) => setSelectedMonth(e.target.value)}
-        className="month-dropdown"
-      >
-        {months.map((month) => (
-          <option key={month} value={month}>
-            {month}
-          </option>
-        ))}
-      </select>
+
+      {mode === "Historical" ? (
+        <select
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          className="month-dropdown"
+        >
+          {months.map((month) => (
+            <option key={month} value={month}>
+              {month}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
       <Canvas camera={{ fov: 18 }}>
         <ambientLight intensity={1.25} />
         <Suspense fallback={null}>
-          <Model kpi={selectedKPI} value={kpiValue} />
+          <Model
+            kpi={selectedKPI}
+            value={kpiValue}
+            visibleFloor={visibleFloor}
+          />
         </Suspense>
         <Environment preset="sunset" />
         <OrbitControls />
